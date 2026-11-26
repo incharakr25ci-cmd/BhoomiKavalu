@@ -1,1 +1,40 @@
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --color-olive: #687442;
+  --color-olive-deep: #424B2D;
+  --color-olive-light: #8A9A5B;
+  --color-bk-black: #151713;
+  --color-bk-white: #FFFFFF;
+  --color-bk-yellow: #F3E9A4;
+  --color-bk-yellow-dark: #E8D56C;
+  --color-bk-gray: #F3F4EF;
+  --color-bk-gray-dark: #D4D5D0;
+  --color-bk-danger: #DC2626;
+  --color-bk-danger-light: #FEE2E2;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-bk-gray);
+    color: var(--color-bk-black);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-bk-gray-dark) transparent;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

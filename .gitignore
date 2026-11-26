@@ -1,11 +1,54 @@
+# Python Virtual Environments & Caches
 .venv/
+venv/
 */.venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Node & Frontend Build Outputs
 frontend/node_modules/
 frontend/dist/
+package-lock.json
+
+# Environment, Secrets & Firebase Private Keys
+.env
+.env.*
+!.env.example
+*firebase*adminsdk*.json
+*serviceAccount*.json
+*.pem
+*.key
+
+# Local Databases, Logs & Temporary Runtime Files
+*.db
+*.sqlite
+*.sqlite3
+*.log
+uploads/
+microphone_tests/
+New folder/
+.yolo/
+
+# Training Datasets, Raw Audio Recordings, Feature Dumps & Runs
 wildlife_dataset/
+data.zip
+*.zip
 runs/
 yolov8n.pt
-*.zip
-.env
+boar_audio/
+elephant_audio/
+tiger_audio/
+animalclap/
+features/
+wildlife_features/
+processed_audio/
+train/
+valid/
+test/
+test_boar.jpg
+
+# Duplicate / Legacy Backups
+/wildlife_audio_classifier_2class.pkl
+/main_backup.py

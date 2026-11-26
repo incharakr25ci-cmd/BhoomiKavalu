@@ -1,257 +1,156 @@
-import { useEffect, useRef, useState } from 'react';
-import { Camera, Radio, ShieldAlert, ShieldCheck, Smartphone, Volume2 } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { useAuthStore } from './stores/authStore';
+import { DashboardLayout } from './components/layout/DashboardLayout';
+import { LoginPage } from './pages/auth/LoginPage';
+import { RegisterPage } from './pages/auth/RegisterPage';
+import { Overview } from './pages/landowner/Overview';
+import { MyLand } from './pages/landowner/MyLand';
+import { LiveMonitoring } from './pages/landowner/LiveMonitoring';
+import { CameraDetection } from './pages/landowner/CameraDetection';
+import { PhoneCameraPage } from './pages/landowner/PhoneCameraPage';
+import { AudioDetection } from './pages/landowner/AudioDetection';
+import { VibrationDetection } from './pages/landowner/VibrationDetection';
+import { OverallAnalysis } from './pages/landowner/OverallAnalysis';
+import { Alerts } from './pages/landowner/Alerts';
+import { DetectionHistory } from './pages/landowner/DetectionHistory';
+import { Settings } from './pages/landowner/Settings';
+import { RegionalOverview } from './pages/officer/RegionalOverview';
+import { LandManagement } from './pages/officer/LandManagement';
+import { RegionalMap } from './pages/officer/RegionalMap';
+import { RegionalAlerts } from './pages/officer/RegionalAlerts';
+import { Landowners } from './pages/officer/Landowners';
+import { Reports } from './pages/officer/Reports';
 
-interface Detection {
-  species: string;
-  confidence: number;
-  alert_level: 'CRITICAL' | 'MONITOR';
-  bbox: [number, number, number, number];
-}
-
-interface AlertState {
-  species: string;
-  confidence: number;
-  alert_level: string;
-  lora_trigger: boolean;
+function ProtectedRoute({
+  allowedRole,
+  title,
+  children,
+}: {
+  allowedRole: 'landowner' | 'forest_officer';
+  title: string;
+  children: ReactNode;
+}) {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
+  if (user.role !== allowedRole) {
+    return (
+      <Navigate
+        to={user.role === 'forest_officer' ? '/officer/overview' : '/landowner/overview'}
+        replace
+      />
+    );
+  }
+  return <DashboardLayout title={title}>{children}</DashboardLayout>;
 }
 
 export default function App() {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraError, setCameraError] = useState('');
-  const [detections, setDetections] = useState<Detection[]>([]);
-  const [alertState, setAlertState] = useState<AlertState>({
-    species: 'NONE',
-    confidence: 0,
-    alert_level: 'CLEAR',
-    lora_trigger: false,
-  });
-
-  // Start rear phone camera (or laptop webcam fallback)
-  const startCamera = async () => {
-    setCameraError('');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setCameraActive(true);
-      }
-    } catch (err) {
-      setCameraError('Camera access blocked. Ensure you opened the HTTPS link and allowed camera permission.');
-    }
-  };
-
-  // Stream frames to FastAPI YOLOv8 every 450ms when camera is active
-  useEffect(() => {
-    if (!cameraActive) return;
-
-    const interval = setInterval(async () => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas || video.readyState !== 4) return;
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
-        const formData = new FormData();
-        formData.append('file', blob, 'frame.jpg');
-
-        try {
-          const res = await fetch('/api/detect-frame', { method: 'POST', body: formData });
-          const data = await res.json();
-          setDetections(data.detections || []);
-        } catch {
-          // Ignore transient frame drop
-        }
-      }, 'image/jpeg', 0.75);
-    }, 450);
-
-    return () => clearInterval(interval);
-  }, [cameraActive]);
-
-  // Poll backend for latest LoRa + Vision alert state (for Ranger Console view)
-  useEffect(() => {
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch('/api/latest-alert');
-        const data = await res.json();
-        setAlertState(data);
-      } catch {
-        // Backend offline
-      }
-    }, 1000);
-    return () => clearInterval(poll);
-  }, []);
-
-  // Trigger simulated LoRa acoustic/seismic wake-up for demo
-  const simulateLoraTrigger = async () => {
-    await fetch('/api/lora-trigger?node_id=NODE_01&event=SEISMIC_FOOTSTEP', { method: 'POST' });
-  };
-
-  const isCritical = alertState.alert_level === 'CRITICAL' || detections.some((d) => d.alert_level === 'CRITICAL');
+  const { isAuthenticated, user } = useAuthStore();
+  const homePath = user?.role === 'forest_officer' ? '/officer/overview' : '/landowner/overview';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-6 font-sans">
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-emerald-400">
-              BHOOMI KAVALU <span className="text-slate-400 font-normal text-sm">| Wildlife Intrusion Mesh</span>
-            </h1>
-            <p className="text-xs text-slate-400">LoRa Acoustic-Seismic Wake-Up + Edge YOLOv8 Vision Verification</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={simulateLoraTrigger}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-medium hover:bg-amber-500/30 transition"
-            >
-              <Radio className="w-4 h-4" /> Test LoRa Wake-Up
-            </button>
-            {!cameraActive && (
-              <button
-                onClick={startCamera}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-slate-950 font-semibold text-sm hover:bg-emerald-400 transition"
-              >
-                <Camera className="w-4 h-4" /> Start Phone Camera
-              </button>
-            )}
-          </div>
-        </header>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/phone-cam/:nodeCode" element={<PhoneCameraPage />} />
 
-        {/* Critical Banner */}
-        <div
-          className={`rounded-xl p-4 border flex items-center justify-between ${
-            isCritical
-              ? 'bg-red-950/60 border-red-500 text-red-200 animate-pulse'
-              : 'bg-slate-900 border-slate-800 text-slate-300'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            {isCritical ? (
-              <ShieldAlert className="w-8 h-8 text-red-400 shrink-0" />
-            ) : (
-              <ShieldCheck className="w-8 h-8 text-emerald-400 shrink-0" />
-            )}
-            <div>
-              <div className="text-xs uppercase tracking-wider opacity-75">Perimeter Status</div>
-              <div className="text-lg font-bold">
-                {isCritical
-                  ? `CRITICAL INTRUSION: ${detections[0]?.species || alertState.species} DETECTED`
-                  : 'PERIMETER CLEAR — STANDBY'}
-              </div>
-            </div>
-          </div>
-          <div className="text-right text-xs space-y-1">
-            <div className="px-2 py-1 rounded bg-slate-800 font-mono">
-              LoRa Node 01: {alertState.lora_trigger ? 'TRIGGERED' : 'LISTENING'}
-            </div>
-          </div>
-        </div>
+      {/* Landowner Routes */}
+      <Route
+        path="/landowner/overview"
+        element={<ProtectedRoute allowedRole="landowner" title="Landowner Overview"><Overview /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/my-land"
+        element={<ProtectedRoute allowedRole="landowner" title="My Land"><MyLand /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/live"
+        element={<ProtectedRoute allowedRole="landowner" title="Live Monitoring"><LiveMonitoring /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/camera"
+        element={<ProtectedRoute allowedRole="landowner" title="Camera Detection"><CameraDetection /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/audio"
+        element={<ProtectedRoute allowedRole="landowner" title="Audio Detection"><AudioDetection /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/vibration"
+        element={<ProtectedRoute allowedRole="landowner" title="Vibration Detection"><VibrationDetection /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/analysis"
+        element={<ProtectedRoute allowedRole="landowner" title="Overall AI Analysis & Fusion"><OverallAnalysis /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/alerts"
+        element={<ProtectedRoute allowedRole="landowner" title="Alerts"><Alerts /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/history"
+        element={<ProtectedRoute allowedRole="landowner" title="Detection History"><DetectionHistory /></ProtectedRoute>}
+      />
+      <Route
+        path="/landowner/settings"
+        element={<ProtectedRoute allowedRole="landowner" title="Profile & Settings"><Settings /></ProtectedRoute>}
+      />
 
-        {/* Main Grid */}
-        <div className="grid md:grid-cols-3 gap-6">
-          {/* Live Camera Feed + Bounding Box Overlay */}
-          <div className="md:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden relative">
-            <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-emerald-400" /> Field Optical Node (Phone Cam)
-              </span>
-              <span>{cameraActive ? 'LIVE • 2 FPS YOLOv8' : 'IDLE'}</span>
-            </div>
+      {/* Forest Officer Routes */}
+      <Route
+        path="/officer/overview"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Regional Overview"><RegionalOverview /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/lands"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Land Management"><LandManagement /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/map"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Regional Map"><RegionalMap /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/live"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Live Monitoring"><LiveMonitoring /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/camera"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Camera Monitoring"><CameraDetection /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/audio"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Audio Monitoring"><AudioDetection /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/vibration"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Vibration Monitoring"><VibrationDetection /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/analysis"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Overall AI Analysis & Fusion"><OverallAnalysis /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/alerts"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Regional Alerts"><RegionalAlerts /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/landowners"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Landowners"><Landowners /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/history"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Detection History"><DetectionHistory /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/reports"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Reports & Analytics"><Reports /></ProtectedRoute>}
+      />
+      <Route
+        path="/officer/settings"
+        element={<ProtectedRoute allowedRole="forest_officer" title="Settings"><Settings /></ProtectedRoute>}
+      />
 
-            <div className="relative aspect-video bg-black flex items-center justify-center">
-              <video ref={videoRef} playsInline muted className="w-full h-full object-contain" />
-              <canvas ref={canvasRef} className="hidden" />
-
-              {/* Bounding Boxes */}
-              {videoRef.current &&
-                detections.map((det, idx) => {
-                  const vw = videoRef.current?.videoWidth || 640;
-                  const vh = videoRef.current?.videoHeight || 480;
-                  const [x1, y1, x2, y2] = det.bbox;
-                  const left = `${(x1 / vw) * 100}%`;
-                  const top = `${(y1 / vh) * 100}%`;
-                  const width = `${((x2 - x1) / vw) * 100}%`;
-                  const height = `${((y2 - y1) / vh) * 100}%`;
-
-                  return (
-                    <div
-                      key={idx}
-                      style={{ left, top, width, height }}
-                      className={`absolute border-2 pointer-events-none ${
-                        det.alert_level === 'CRITICAL' ? 'border-red-500 bg-red-500/10' : 'border-amber-400'
-                      }`}
-                    >
-                      <span
-                        className={`px-1.5 py-0.5 text-[11px] font-bold uppercase ${
-                          det.alert_level === 'CRITICAL' ? 'bg-red-500 text-white' : 'bg-amber-400 text-slate-950'
-                        }`}
-                      >
-                        {det.species} {Math.round(det.confidence * 100)}%
-                      </span>
-                    </div>
-                  );
-                })}
-
-              {!cameraActive && (
-                <div className="text-center p-6 space-y-3">
-                  <p className="text-sm text-slate-400">
-                    Open this page on your phone and tap <strong>Start Phone Camera</strong> to stream live wildlife
-                    detection.
-                  </p>
-                  {cameraError && <p className="text-xs text-red-400">{cameraError}</p>}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Telemetry & Detections Sidebar */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-emerald-400" /> Active Detections
-            </h2>
-
-            {detections.length === 0 ? (
-              <p className="text-xs text-slate-500 py-8 text-center">No wildlife currently in frame.</p>
-            ) : (
-              <div className="space-y-2">
-                {detections.map((d, i) => (
-                  <div
-                    key={i}
-                    className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-bold text-sm text-white">{d.species}</div>
-                      <div className="text-xs text-slate-400">Confidence: {(d.confidence * 100).toFixed(0)}%</div>
-                    </div>
-                    <span
-                      className={`px-2 py-1 rounded text-[10px] font-bold ${
-                        d.alert_level === 'CRITICAL'
-                          ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-                          : 'bg-amber-500/20 text-amber-300'
-                      }`}
-                    >
-                      {d.alert_level}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+      <Route path="*" element={<Navigate to={isAuthenticated ? homePath : '/login'} replace />} />
+    </Routes>
   );
 }
